@@ -1,3 +1,5 @@
+# app/db.py 
+# the only way to connect to the database is through this module, which reads the DATABASE_URL from the .env file and returns a connection object
 import os
 
 import psycopg
