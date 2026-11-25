@@ -2,8 +2,6 @@
 
 A money-transfer API built to break, then fixed one problem at a time: crashes, double spending, deadlocks, retries, and notifying a partner without losing or duplicating events.
 
-**Invariant:** money is never created or lost. The sum of all balances is always 0 (the bank account holds the negative side).
-
 ## Stack
 
 Python 3.14 · FastAPI · Postgres 18 (Docker) · psycopg 3 with hand-written SQL · pytest
@@ -12,42 +10,40 @@ Python 3.14 · FastAPI · Postgres 18 (Docker) · psycopg 3 with hand-written SQ
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 cp .env.example .env
 
 docker run -d --name wallet-db \
   -e POSTGRES_USER=wallet -e POSTGRES_PASSWORD=wallet -e POSTGRES_DB=wallet \
   -p 5432:5432 postgres:18
 
-python scripts/reset.py              # schema + seed
-uvicorn app.main:app --reload        # http://localhost:8000/docs
+python -m scripts.reset              # drop + recreate tables
+uvicorn app.main:app --reload        # http://localhost:8000/health
 ```
 
 ## Layout
 
 ```
-app/       API (routes) and business logic (transfers, SQL)
-db/        schema.sql, seed.sql
-scripts/   reset.py, one script per step (00_basics, 01_crash, …)
-tests/     pytest, shared checker
+app/       FastAPI app (main.py) and DB connection (db.py)
+db/        schema.sql
+scripts/   reset.py
+tests/     (coming)
 ```
 
-## Contract
+## Database
 
-**Database:** `DATABASE_URL=postgresql://wallet:wallet@localhost:5432/wallet`
+`DATABASE_URL=postgresql://wallet:wallet@localhost:5432/wallet` · all amounts in cents · see `db/schema.sql`
 
-- `accounts(id, name, balance_cents BIGINT)`: id 1 is the bank, the only account allowed below 0
-- `transfers(id, from_id, to_id, amount_cents, created_at)`
+- `accounts(id, owner, balance, is_system, created_at)`: `is_system` marks the bank, the only account meant to go below 0. The `CHECK (balance >= 0)` is off on purpose until step 2.
+- `transfers(id, sender_id, receiver_id, amount, status, created_at)`: `status` is `completed` or `refused`. `idempotency_key` is commented out until step 5.
+- `ledger_entries(id, transfer_id, account_id, amount, created_at)`: one entry per account touched by a transfer.
 
-**API:**
+## API
 
-| Route | Body | Response |
-| --- | --- | --- |
-| `POST /accounts` | `{name, initial_cents}` | `{id, balance_cents}` |
-| `GET /accounts/{id}` | — | `{id, balance_cents}` |
-| `POST /transfers` | `{from_id, to_id, amount_cents}` | `201 {id, …}` |
-
-Errors: `422` invalid input · `404` unknown account · `409` insufficient funds. `Idempotency-Key` header is reserved for step 5.
+| Route | Status |
+| --- | --- |
+| `GET /health` | done: checks the DB connection |
+| `POST /accounts`, `GET /accounts/{id}`, `POST /transfers` | to define |
 
 ## Roadmap
 
