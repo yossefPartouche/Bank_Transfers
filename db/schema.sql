@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS ledger_entries, transfers, accounts
+
 CREATE TABLE accounts (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     owner       TEXT        NOT NULL UNIQUE CHECK (owner <> ''),
