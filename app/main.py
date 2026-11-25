@@ -1,7 +1,7 @@
 import psycopg
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI
-from app.db import get_conn
+from app.db import get_conn, DATABASE_URL
 from pydantic import BaseModel
 app = FastAPI()
 
@@ -49,3 +49,67 @@ def get_account(account_id: int):
         return error(404, "account_not_found", f"no account with id {account_id}")
 
     return {"id": row[0], "owner": row[1], "balance": row[2]}
+class TransferIn(BaseModel):
+    sender_id: int
+    receiver_id: int
+    amount: int
+
+
+@app.post("/transfers", status_code=201)
+def create_transfer(body: TransferIn):
+    # NAIVE on purpose: no transaction, no lock, no idempotency key.
+    # Each statement commits on its own (autocommit), so the bugs can show up.
+    if body.amount <= 0:
+        return error(400, "invalid_amount", "amount must be a positive whole number")
+    if body.sender_id == body.receiver_id:
+        return error(400, "same_account", "sender and receiver must be different")
+
+    with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+        sender = conn.execute(
+            "SELECT balance, is_system FROM accounts WHERE id = %s", (body.sender_id,)
+        ).fetchone()
+        receiver = conn.execute(
+            "SELECT balance FROM accounts WHERE id = %s", (body.receiver_id,)
+        ).fetchone()
+        if sender is None or receiver is None:
+            return error(404, "account_not_found", "sender or receiver does not exist")
+
+        sender_balance, sender_is_system = sender
+        receiver_balance = receiver[0]
+
+        if not sender_is_system and sender_balance < body.amount:
+            conn.execute(
+                "INSERT INTO transfers (sender_id, receiver_id, amount, status) "
+                "VALUES (%s, %s, %s, 'refused')",
+                (body.sender_id, body.receiver_id, body.amount),
+            )
+            return error(422, "insufficient_funds",
+                         f"account {body.sender_id} has {sender_balance}, needs {body.amount}")
+
+        transfer_id = conn.execute(
+            "INSERT INTO transfers (sender_id, receiver_id, amount, status) "
+            "VALUES (%s, %s, %s, 'completed') RETURNING id, created_at",
+            (body.sender_id, body.receiver_id, body.amount),
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO ledger_entries (transfer_id, account_id, amount) VALUES (%s, %s, %s)",
+            (transfer_id[0], body.sender_id, -body.amount),
+        )
+        conn.execute(
+            "INSERT INTO ledger_entries (transfer_id, account_id, amount) VALUES (%s, %s, %s)",
+            (transfer_id[0], body.receiver_id, body.amount),
+        )
+        # Read-then-write: new balances computed in Python from the values read above.
+        conn.execute("UPDATE accounts SET balance = %s WHERE id = %s",
+                     (sender_balance - body.amount, body.sender_id))
+        conn.execute("UPDATE accounts SET balance = %s WHERE id = %s",
+                     (receiver_balance + body.amount, body.receiver_id))
+
+    return {
+        "id": transfer_id[0],
+        "sender_id": body.sender_id,
+        "receiver_id": body.receiver_id,
+        "amount": body.amount,
+        "status": "completed",
+        "created_at": transfer_id[1],
+    }
