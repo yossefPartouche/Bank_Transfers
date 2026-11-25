@@ -36,3 +36,16 @@ def create_account(body: AccountIn):
         return error(409, "owner_taken", f"an account for '{body.owner}' already exists")
 
     return {"id": row[0], "owner": row[1], "balance": row[2], "created_at": row[3]}
+
+@app.get("/accounts/{account_id}")
+def get_account(account_id: int):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, owner, balance FROM accounts WHERE id = %s",
+            (account_id,),
+        ).fetchone()
+
+    if row is None:
+        return error(404, "account_not_found", f"no account with id {account_id}")
+
+    return {"id": row[0], "owner": row[1], "balance": row[2]}
