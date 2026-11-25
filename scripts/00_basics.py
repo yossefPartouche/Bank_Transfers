@@ -25,8 +25,14 @@ def transfer(api, sender, receiver, amount):
 
 
 def main():
+    try:
+        httpx.get(f"{API}/health")
+    except httpx.ConnectError:
+        raise SystemExit(f"✗ API not reachable at {API}: start it with `uvicorn app.main:app --reload`")
+
     print("1. Clean database, bank only")
     reset_db()
+    ...
     bank = seed({})["bank"]
 
     with httpx.Client(base_url=API) as api:
