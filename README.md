@@ -17,7 +17,7 @@ docker run -d --name wallet-db \
   -e POSTGRES_USER=wallet -e POSTGRES_PASSWORD=wallet -e POSTGRES_DB=wallet \
   -p 5432:5432 postgres:18
 
-python -m scripts.reset              # drop + recreate tables
+python -m scripts.reset_db             # drop + recreate tables
 uvicorn app.main:app --reload        # http://localhost:8000/health
 ```
 

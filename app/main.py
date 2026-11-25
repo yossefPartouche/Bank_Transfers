@@ -1,12 +1,30 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-from app.db import get_conn
+from app import errors
+from app.routes import accounts, health, transfers
 
 app = FastAPI()
+app.include_router(health.router)
+app.include_router(accounts.router)
+app.include_router(transfers.router)
+
+# Business error -> (HTTP status, error code). The only place that knows both worlds.
+HTTP_ERRORS = {
+    errors.AccountNotFound: (404, "account_not_found"),
+    errors.InsufficientFunds: (422, "insufficient_funds"),
+    errors.InvalidAmount: (400, "invalid_amount"),
+    errors.SameAccount: (400, "same_account"),
+    errors.InvalidOwner: (400, "invalid_owner"),
+    errors.OwnerTaken: (409, "owner_taken"),
+}
 
 
-@app.get("/health")
-def health():
-    with get_conn() as conn:           # Use the get_conn function to get a db connection
-        conn.execute("SELECT 1")
-    return {"status": "ok"}
+def make_handler(status, code):
+    def handler(request, exc):
+        return JSONResponse(status_code=status, content={"error": {"code": code, "message": str(exc)}})
+    return handler
+
+
+for exc_class, (status, code) in HTTP_ERRORS.items():
+    app.add_exception_handler(exc_class, make_handler(status, code))
