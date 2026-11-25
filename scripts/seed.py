@@ -4,7 +4,8 @@ from scripts.reset_db import reset_db
 
 def seed(accounts=None):
     " Seed the database with initial data. If accounts is None, default accounts A and B are created with 10000 each."
-    accounts = accounts or {"A": 10000, "B": 10000}
+    if accounts is None:
+        accounts = {"A": 10000, "B": 10000}
     ids = {}
     with get_conn() as conn:
         # Create a system account for the bank
