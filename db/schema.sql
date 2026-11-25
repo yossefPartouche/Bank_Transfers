@@ -1,11 +1,11 @@
-DROP TABLE IF EXISTS ledger_entries, transfers, accounts
+DROP TABLE IF EXISTS ledger_entries, transfers, accounts;
 
 CREATE TABLE accounts (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     owner       TEXT        NOT NULL UNIQUE CHECK (owner <> ''),
     balance     BIGINT      NOT NULL DEFAULT 0,
     is_system   BOOLEAN     NOT NULL DEFAULT false,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     --CHECK       (balance >= 0 OR is_system)
 );
 
