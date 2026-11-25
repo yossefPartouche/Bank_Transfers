@@ -6,7 +6,7 @@ A money-transfer API built to break, then fixed one problem at a time: crashes, 
 
 ## Stack
 
-Python · FastAPI · Postgres 18 (Docker) · psycopg 3 with hand-written SQL · pytest
+Python 3.14 · FastAPI · Postgres 18 (Docker) · psycopg 3 with hand-written SQL · pytest
 
 ## Setup
 
