@@ -4,12 +4,12 @@ CREATE TABLE accounts (
     balance     BIGINT      NOT NULL DEFAULT 0,
     is_system   BOOLEAN     NOT NULL DEFAULT false,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    "CHECK       (balance >= 0 OR is_system)"
+    --CHECK       (balance >= 0 OR is_system)
 );
 
 CREATE TABLE transfers (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    "idempotency_key TEXT        NOT NULL UNIQUE,"
+    --idempotency_key TEXT        NOT NULL UNIQUE,
     sender_id       BIGINT      NOT NULL REFERENCES accounts(id),
     receiver_id     BIGINT      NOT NULL REFERENCES accounts(id),
     amount          BIGINT      NOT NULL CHECK (amount > 0),
