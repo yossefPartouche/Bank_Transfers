@@ -1,9 +1,15 @@
 """Shared helpers for the chaos scripts.
 
-Every script: reset the DB, seed accounts through the API, attack, then check the money.
-The API must be running (uvicorn app.main:app --port 8000), except for crash.py,
-which starts and kills its own server.
+Every script follows the same pattern:
+    1. fresh_start()   clean DB + accounts funded by the bank (direct SQL, no API)
+    2. attack through the API with transfer() and run_concurrently()
+    3. verdict()       the script's own numbers + the shared invariant checker
+
+The API must be running on API_URL (default http://localhost:8000),
+except for scripts that start their own server with start_server().
 """
+import contextlib
+import io
 import os
 import signal
 import subprocess
@@ -15,51 +21,55 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 
 from app.db import get_conn
-from scripts.reset import reset
+from scripts.reset_db import reset_db
+from scripts.seed import seed
+from tests.checker import check
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 
-def client(base_url: str = API_URL) -> httpx.Client:
+# ---------- setup ----------
+
+def client(base_url=API_URL):
     return httpx.Client(base_url=base_url, timeout=30)
 
 
-def fresh_start(api: httpx.Client, bots: int, start_balance: int) -> tuple[int, list[int]]:
-    """Reset the DB, create the system account and `bots` accounts funded with `start_balance` each.
+def fresh_start(api=None, bots=2, start_balance=10_000):
+    """Clean DB, then `bots` accounts funded by the bank. Returns (bank_id, [bot ids]).
 
-    Funding goes through POST /transfers from the system account, so the ledger is right from line one.
-    Returns (system_id, [bot ids]).
+    Uses SQL, not the API: the starting state must not depend on the code under test.
+    `api` is unused, kept so the older scripts still run unchanged.
     """
-    reset()
-    system_id = api.post("/accounts", json={"owner": "system"}).json()["id"]
-    with get_conn() as conn:  # is_system can't be set through the API, on purpose
-        conn.execute("UPDATE accounts SET is_system = true WHERE id = %s", (system_id,))
-    ids = [api.post("/accounts", json={"owner": f"bot-{i}"}).json()["id"] for i in range(bots)]
-    for bot in ids:
-        if start_balance:
-            r = api.post("/transfers", json={"sender_id": system_id, "receiver_id": bot, "amount": start_balance})
-            r.raise_for_status()
-    return system_id, ids
+    assert start_balance > 0, "a funding transfer must be positive"
+    names = [f"bot-{i}" for i in range(bots)]
+    with contextlib.redirect_stdout(io.StringIO()):  # reset/seed print; keep the output readable
+        reset_db()
+        ids = seed({name: start_balance for name in names})
+    return ids["bank"], [ids[name] for name in names]
 
 
-def transfer(api: httpx.Client, sender: int, receiver: int, amount: int, key: str | None = None) -> httpx.Response:
+# ---------- attack ----------
+
+def transfer(api, sender, receiver, amount, key=None):
+    """POST /transfers, always with an Idempotency-Key (random unless given)."""
     headers = {"Idempotency-Key": key or str(uuid.uuid4())}
-    return api.post("/transfers", json={"sender_id": sender, "receiver_id": receiver, "amount": amount}, headers=headers)
+    body = {"sender_id": sender, "receiver_id": receiver, "amount": amount}
+    return api.post("/transfers", json=body, headers=headers)
 
 
-def run_concurrently(jobs, workers: int = 20) -> list:
-    """Run a list of zero-argument functions at the same time; return their results (or exceptions)."""
+def run_concurrently(jobs, workers=20):
+    """Run zero-argument functions at the same time. Returns results; a failed call returns its exception."""
     def safe(job):
         try:
             return job()
-        except Exception as e:  # a failed request is a result too
+        except Exception as e:
             return e
     with ThreadPoolExecutor(workers) as pool:
         return list(pool.map(safe, jobs))
 
 
-def start_server(port: int, workers: int = 1) -> subprocess.Popen:
-    """Start our own API server (used by scripts that kill it or need several workers)."""
+def start_server(port, workers=1):
+    """Start our own API server (for scripts that kill it or need several workers)."""
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port),
          "--workers", str(workers), "--log-level", "warning"],
@@ -70,26 +80,27 @@ def start_server(port: int, workers: int = 1) -> subprocess.Popen:
             try:
                 if c.get("/health").status_code == 200:
                     return proc
-            except Exception:
+            except httpx.HTTPError:
                 pass
             time.sleep(0.2)
-    raise SystemExit("server didn't start")
+    raise SystemExit(f"server on port {port} didn't start")
 
 
-def kill_server(proc: subprocess.Popen) -> None:
-    """SIGKILL the whole server: no cleanup, no goodbye, like a power cut."""
+def kill_server(proc):
+    """SIGKILL the whole server: no cleanup, like a power cut."""
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
 
 
-def money_report() -> dict:
-    """The referee: every number here should be 0 on a correct system."""
+# ---------- judge ----------
+
+def money_report():
+    """Old referee, kept until each script is rewritten (01_crash, 02_concurrency, ...).
+    New scripts rely on verdict(), which runs tests/checker.py."""
     with get_conn() as conn:
         q = lambda sql: conn.execute(sql).fetchone()[0]
         return {
-            # system goes negative by what it gave out, so all balances together must sum to 0
             "sum_of_all_balances": q("SELECT COALESCE(SUM(balance), 0) FROM accounts"),
-            # every completed transfer writes -x and +x, so the ledger must sum to 0
             "sum_of_ledger": q("SELECT COALESCE(SUM(amount), 0) FROM ledger_entries"),
             "accounts_drifting_from_ledger": q("""
                 SELECT COUNT(*) FROM accounts a
@@ -103,13 +114,29 @@ def money_report() -> dict:
         }
 
 
-def verdict(name: str, problems: dict, details: dict | None = None) -> None:
-    """Print PASS/FAIL. `problems` maps a label to a number that must be 0. Exit 1 on FAIL."""
+def verdict(name, problems, details=None, invariants=True):
+    """Print one PASS/FAIL block, then exit 0 or 1 (run_all reads the exit code).
+
+    problems:   {label: number}, every number must be 0
+    details:    {label: value}, context only
+    invariants: also run the shared checker (tests/checker.py)
+    """
     print(f"\n=== {name}")
-    for k, v in (details or {}).items():
-        print(f"  {k}: {v}")
-    bad = {k: v for k, v in problems.items() if v}
-    for k, v in problems.items():
-        print(f"  {'FAIL' if v else 'ok  '} {k}: {v}")
-    print("RESULT:", "FAIL (bug reproduced)" if bad else "PASS")
-    sys.exit(1 if bad else 0)
+    for label, value in (details or {}).items():
+        print(f"  {label}: {value}")
+
+    failed = False
+    for label, value in problems.items():
+        print(f"  {'FAIL' if value else 'ok  '} {label}: {value}")
+        failed |= bool(value)
+
+    if invariants:
+        violations = check()
+        for label, rows in violations:
+            print(f"  FAIL invariant · {label}: {len(rows)} row(s)")
+        if not violations:
+            print("  ok   invariants (tests/checker.py)")
+        failed |= bool(violations)
+
+    print("RESULT:", "FAIL (bug reproduced)" if failed else "PASS")
+    sys.exit(1 if failed else 0)
