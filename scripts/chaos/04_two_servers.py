@@ -8,9 +8,10 @@ split between TWO separate API servers. A lock kept in Python memory (threading.
 once per process, so each server would let its own share through. A lock in the database
 (SELECT ... FOR UPDATE) is shared by both, so exactly one transfer can succeed.
 
-Scenario B · connection peak: both servers run several workers, and each request opens a
-brand-new Postgres connection. Under load, all of them together can open more connections
-than Postgres allows (max_connections, about 100), and requests start failing.
+Scenario B · connection peak: a rush on ONE account. Every transfer queues on that account's
+lock while holding its database connection, so connections pile up. Without a pool, each
+request opens its own connection: past max_connections (about 100), requests fail. With a
+pool per worker, the total is capped at servers × workers × POOL_MAX.
 
 Isolation: in B money only flows one way (no deadlock), every account can afford its transfers
 (no refusal), and every request has its own idempotency key (no retry).
@@ -38,10 +39,10 @@ A_TRIES = 20       # transfers fired at the same moment, half to each server
 A_AMOUNT = 80      # 0.80 each: affordable exactly once
 
 # Scenario B
-B_WORKERS = 2      # uvicorn workers per server: 2 servers × 4 workers × ~40 requests each
+B_WORKERS = 2      # 2 servers × 2 workers × POOL_MAX 10 = 40 connections max
 B_REQUESTS = 1200  # transfers in total
 B_IN_FLIGHT = 250  # transfers in flight at the same time
-B_SENDERS = 100      # sender i always pays receiver i: one-way, no shared receiver
+B_SENDERS = 100    # many senders, ONE receiver: each transfer queues on its lock, holding a connection
 B_WARNING = 0.8    # the peak must stay under 80% of max_connections
 
 
@@ -106,7 +107,9 @@ def connection_peak(apis):
     watcher.join()
 
     codes = [r.status_code if not isinstance(r, Exception) else "error" for r in results]
-    return {**tally(codes), "peak": peak, "limit": limit, "broken": [name for name, _ in check()]}
+    other = sorted({str(c) for c in codes if c not in (201, 422)})   # which answers failed: "503", "500", "error"...
+    return {**tally(codes), "other codes": other, "peak": peak, "limit": limit,
+            "broken": [name for name, _ in check()]}
 
 
 if __name__ == "__main__":
@@ -139,4 +142,5 @@ if __name__ == "__main__":
         "B · load": f"{B_REQUESTS} transfers, {B_IN_FLIGHT} in flight, {len(PORTS)} servers × {B_WORKERS} workers",
         "B · (succeeded, refused, other)": f"({b['succeeded']}, {b['refused']}, {b['other']})",
         "B · peak open connections / limit": f"{b['peak']} / {b['limit']}",
+        "B · other answers": ", ".join(b["other codes"]) or "none",
     }, invariants=False)  # each scenario ran the checker itself; the DB is reset in between
