@@ -12,29 +12,16 @@ Fix:   always lock the two accounts in the same order (lowest id first), in serv
 PASS:  in every round, 0 deadlocks counted by Postgres, every transfer answered 201,
        balances exact, invariants hold
 """
-import threading
 import time
 
 from app.db import get_conn
-from scripts.chaos.common import client, fresh_start, run_concurrently, transfer, verdict
+from scripts.chaos.common import all_at_once, client, fresh_start, verdict
 from tests.checker import check
 
 ROUNDS = 2          # deadlocks depend on timing: a PASS must hold every round
 START = 1_000_000   # 10,000.00 € each: nobody can run out of money
-EACH_WAY = 10       # 50 A→B and 50 B→A, fired at the same moment
+EACH_WAY = 10       # 10 A→B and 10 B→A, fired at the same moment
 AMOUNT = 100        # 1.00 € each
-
-
-def all_at_once(api, calls):
-    """Fire every (sender, receiver, amount) at the same moment; return the status codes, in order."""
-    barrier = threading.Barrier(len(calls))
-
-    def job(sender, receiver, amount):
-        barrier.wait()  # every thread waits here until all are ready, then they go together
-        return transfer(api, sender, receiver, amount)
-
-    results = run_concurrently([lambda c=c: job(*c) for c in calls], workers=len(calls))
-    return [r.status_code if not isinstance(r, Exception) else "error" for r in results]
 
 
 def deadlocks_so_far():
@@ -47,7 +34,7 @@ def deadlocks_so_far():
 
 def one_round(api):
     _, (a, b) = fresh_start(bots=2, start_balance=START)
-    calls = [(a, b, AMOUNT)] * EACH_WAY + [(b, a, AMOUNT)] * EACH_WAY   # 50 A→B and 50 B→A, fired at the same moment
+    calls = [(a, b, AMOUNT)] * EACH_WAY + [(b, a, AMOUNT)] * EACH_WAY   # A→B first, then B→A
 
     before = deadlocks_so_far()
     start = time.perf_counter()
