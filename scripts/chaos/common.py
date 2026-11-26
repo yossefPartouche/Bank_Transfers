@@ -24,6 +24,7 @@ from app.db import get_conn
 from scripts.reset_db import reset_db
 from scripts.seed import seed
 from tests.checker import check
+from tests.checker import CHECKS, check
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
@@ -115,28 +116,24 @@ def money_report():
 
 
 def verdict(name, problems, details=None, invariants=True):
-    """Print one PASS/FAIL block, then exit 0 or 1 (run_all reads the exit code).
-
-    problems:   {label: number}, every number must be 0
-    details:    {label: value}, context only
-    invariants: also run the shared checker (tests/checker.py)
-    """
-    print(f"\n=== {name}")
+    """Print a readable report, then exit 0 (PASS) or 1 (FAIL) for run_all."""
+    print(f"\n━━ {name} " + "━" * max(3, 60 - len(name)))
     for label, value in (details or {}).items():
-        print(f"  {label}: {value}")
+        print(f"    {label:<40} {value}")
 
     failed = False
+    print()
     for label, value in problems.items():
-        print(f"  {'FAIL' if value else 'ok  '} {label}: {value}")
+        print(f"  {'✗' if value else '✓'} {label:<40} {value}")
         failed |= bool(value)
 
     if invariants:
-        violations = check()
-        for label, rows in violations:
-            print(f"  FAIL invariant · {label}: {len(rows)} row(s)")
-        if not violations:
-            print("  ok   invariants (tests/checker.py)")
-        failed |= bool(violations)
+        broken = dict(check())
+        print("\n  invariants (tests/checker.py)")
+        for rule in CHECKS:
+            n = len(broken.get(rule, []))
+            print(f"  {'✗' if n else '✓'} {rule:<40} {n or ''}")
+        failed |= bool(broken)
 
-    print("RESULT:", "FAIL (bug reproduced)" if failed else "PASS")
+    print("\n  " + ("FAIL · bug reproduced" if failed else "PASS"))
     sys.exit(1 if failed else 0)
