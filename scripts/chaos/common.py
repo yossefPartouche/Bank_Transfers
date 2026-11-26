@@ -14,6 +14,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -65,6 +66,22 @@ def run_concurrently(jobs, workers=20):
             return e
     with ThreadPoolExecutor(workers) as pool:
         return list(pool.map(safe, jobs))
+
+
+def all_at_once(api, calls):
+    """Fire every (sender, receiver, amount) at the same moment; return the status codes, in order.
+
+    A Barrier holds every thread until all are ready, then releases them together,
+    so the requests really overlap instead of trickling in one after another.
+    """
+    barrier = threading.Barrier(len(calls))
+
+    def job(sender, receiver, amount):
+        barrier.wait()
+        return transfer(api, sender, receiver, amount)
+
+    results = run_concurrently([lambda c=c: job(*c) for c in calls], workers=len(calls))
+    return [r.status_code if not isinstance(r, Exception) else "error" for r in results]
 
 
 def start_server(port, workers=1):
