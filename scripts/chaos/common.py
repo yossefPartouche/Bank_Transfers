@@ -68,20 +68,35 @@ def run_concurrently(jobs, workers=20):
         return list(pool.map(safe, jobs))
 
 
-def all_at_once(api, calls):
-    """Fire every (sender, receiver, amount) at the same moment; return the status codes, in order.
-
-    A Barrier holds every thread until all are ready, then releases them together,
-    so the requests really overlap instead of trickling in one after another.
+def fire_at_once(apis, calls):
     """
+    Send every (sender, receiver, amount) in `calls` at the same moment. Returns the status codes.
+
+    apis:  one client, or a list of clients to alternate between (call 0 → server 1,
+           call 1 → server 2, ...), so each server gets its share, guaranteed.
+    A Barrier makes every thread wait until all are ready, then releases them together,
+    so the requests really overlap instead of trickling in one after another.
+    A call that gets no answer (timeout, dropped connection) is reported as "error".
+    """
+    apis = apis if isinstance(apis, (list, tuple)) else [apis]
     barrier = threading.Barrier(len(calls))
 
-    def job(sender, receiver, amount):
+    def job(i, sender, receiver, amount):
+        api = apis[i % len(apis)]
         barrier.wait()
         return transfer(api, sender, receiver, amount)
 
-    results = run_concurrently([lambda c=c: job(*c) for c in calls], workers=len(calls))
+    results = run_concurrently(
+        [lambda i=i, c=c: job(i, *c) for i, c in enumerate(calls)],
+        workers=len(calls),  # one thread per call, or the barrier would wait forever
+    )
     return [r.status_code if not isinstance(r, Exception) else "error" for r in results]
+
+def tally(codes):
+    """Count the answers from fire_at_once():
+    {"succeeded": 201s, "refused": 422s, "other": everything else (500s, "error", ...)}."""
+    succeeded, refused = codes.count(201), codes.count(422)
+    return {"succeeded": succeeded, "refused": refused, "other": len(codes) - succeeded - refused}
 
 
 def start_server(port, workers=1):

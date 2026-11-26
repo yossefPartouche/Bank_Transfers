@@ -1,4 +1,4 @@
-from app.db import get_conn
+from app.db import connect
 
 CHECKS = {
     "total is not 0 (money created or lost)":
@@ -28,7 +28,7 @@ CHECKS = {
 
 def check():
     violations = []
-    with get_conn() as conn:
+    with connect() as conn:
         for name, sql in CHECKS.items():
             rows = conn.execute(sql).fetchall()
             if rows:

@@ -18,7 +18,7 @@ import threading
 
 import httpx
 
-from app.db import get_conn
+from app.db import connect
 from scripts.chaos.common import client, fresh_start, kill_server, run_concurrently, start_server, transfer, verdict
 from tests.checker import check
 
@@ -58,7 +58,7 @@ def reader_in_the_middle():
     def reader():
         "add up all balances, keep track of how many reads and how many were wrong"
         nonlocal reads, wrong
-        with get_conn(autocommit=True) as conn:  # every read sees the latest committed state
+        with connect(autocommit=True) as conn:  # every read sees the latest committed state
             while not stop.is_set():
                 total = conn.execute("SELECT sum(balance) FROM accounts").fetchone()[0]
                 reads += 1
@@ -75,7 +75,7 @@ def reader_in_the_middle():
         watcher = threading.Thread(target=reader)   # start the reader in the background
         watcher.start()
         with client(f"http://localhost:{PORT}") as api:
-            # 10 pairs of accounts, each doing 10 round trips, all concurrently
+            # 150 pairs of accounts, each doing 10 round trips
             run_concurrently([lambda x=x, y=y: back_and_forth(api, x, y) for x, y in pairs], workers=10)
         stop.set()      # tell the reader to stop, but it may still be in the middle of a read
         watcher.join()

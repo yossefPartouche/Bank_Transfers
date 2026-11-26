@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from app.db import get_conn
+from app.db import connect
 
 DB_DIR = Path(__file__).resolve().parent.parent / "db"
 FILES = ["schema.sql"]
 
 
 def reset_db():
-    with get_conn() as conn:         # open a connection to the db
+    with connect() as conn:         # open a connection to the db
         for name in FILES:           # read and send each file in the FILES list to the db
             sql = (DB_DIR / name).read_text()
             conn.execute(sql)

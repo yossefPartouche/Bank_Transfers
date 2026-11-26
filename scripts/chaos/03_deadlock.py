@@ -14,8 +14,8 @@ PASS:  in every round, 0 deadlocks counted by Postgres, every transfer answered 
 """
 import time
 
-from app.db import get_conn
-from scripts.chaos.common import all_at_once, client, fresh_start, verdict
+from app.db import connect
+from scripts.chaos.common import fire_at_once, client, fresh_start, verdict, tally
 from tests.checker import check
 
 ROUNDS = 2          # deadlocks depend on timing: a PASS must hold every round
@@ -26,7 +26,7 @@ AMOUNT = 100        # 1.00 € each
 
 def deadlocks_so_far():
     """Postgres counts every deadlock it detects, per database."""
-    with get_conn() as conn:
+    with connect() as conn:
         return conn.execute(
             "SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()"
         ).fetchone()[0]
@@ -38,13 +38,13 @@ def one_round(api):
 
     before = deadlocks_so_far()
     start = time.perf_counter()
-    codes = all_at_once(api, calls)     # run the transfers at the same moment
+    codes = fire_at_once(api, calls)     # run the transfers at the same moment
     seconds = time.perf_counter() - start
     time.sleep(1.5)  # Postgres publishes its statistics with a short delay
     deadlocks = deadlocks_so_far() - before
 
-    a_to_b = codes[:EACH_WAY].count(201)   # how many successful A→B
-    b_to_a = codes[EACH_WAY:].count(201)   # how many successful B→A
+    a_to_b = tally(codes[:EACH_WAY])["succeeded"]   # how many successful A→B
+    b_to_a = tally(codes[EACH_WAY:])["succeeded"]   # how many successful B→A
     # calculate the expected balances after all the transfers, in order (A, B)
     expected = [START - (a_to_b - b_to_a) * AMOUNT, START + (a_to_b - b_to_a) * AMOUNT]
     # check the actual balances, in order (A, B)
