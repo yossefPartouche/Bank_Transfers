@@ -9,6 +9,7 @@ import sys
 SCRIPTS = [
     ("step 1 · crash in the middle", "01_crash"),
     ("step 2 · concurrent transfers", "02_concurrency"),
+    ("step 3 · deadlock", "03_deadlock"),
     ("step 4 · too many connections", "connections"),
     ("step 5 · duplicate on retry", "duplicate"),
 ]
