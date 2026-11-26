@@ -48,7 +48,7 @@ def transfer(sender_id, receiver_id, amount):
         # Read-then-write: new balances computed in Python from the values read above.
         conn.execute("UPDATE accounts SET balance = %s WHERE id = %s", (sender_balance - amount, sender_id))
         conn.execute("UPDATE accounts SET balance = %s WHERE id = %s", (receiver_balance + amount, receiver_id))
-        # This is neccessary since it happens automatically, though better for readability
+        # This is neccessary since it happens automatically, though better for readability 
         conn.commit()
 
     return {"id": transfer_id, "sender_id": sender_id, "receiver_id": receiver_id,
