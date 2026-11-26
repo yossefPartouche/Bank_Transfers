@@ -22,7 +22,7 @@ app.include_router(accounts.router)
 app.include_router(transfers.router)
 
 
-# Business error -> (HTTP status, error code). The only place that knows both worlds.
+# error -> (HTTP status, error code). The only place that knows both worlds.
 HTTP_ERRORS = {
     errors.AccountNotFound: (404, "account_not_found"),
     errors.InsufficientFunds: (422, "insufficient_funds"),
