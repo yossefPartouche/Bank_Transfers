@@ -68,7 +68,7 @@ def lost_update_receiver(api):
 
     answers = tally(codes)
     balance = api.get(f"/accounts/{receiver}").json()["balance"]
-    expected = B_START + answers["succeeded"] * A_AMOUNT  # only the transfers that really went through
+    expected = B_START + answers["succeeded"] * B_AMOUNT  # only the transfers that really went through
     return {
         **answers,
         "balance": balance,
