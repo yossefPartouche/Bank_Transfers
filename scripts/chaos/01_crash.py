@@ -75,7 +75,7 @@ def reader_in_the_middle():
         watcher = threading.Thread(target=reader)   # start the reader in the background
         watcher.start()
         with client(f"http://localhost:{PORT}") as api:
-            # 10 pairs of accounts, each doing 10 round trips, all concurrently
+            # 150 pairs of accounts, each doing 10 round trips
             run_concurrently([lambda x=x, y=y: back_and_forth(api, x, y) for x, y in pairs], workers=10)
         stop.set()      # tell the reader to stop, but it may still be in the middle of a read
         watcher.join()
