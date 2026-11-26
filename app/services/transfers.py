@@ -4,7 +4,7 @@ from app.errors import AccountNotFound, InsufficientFunds, InvalidAmount, SameAc
 
 def transfer(sender_id, receiver_id, amount):
     # Step 1: one transaction. Step 2: rows locked before deciding, balances computed in the DB.
-    # Not yet: lock ordering (step 3), idempotency key (step 5).
+    # Step 3: rows locked in id order. Not yet: idempotency key (step 5).
     if amount <= 0:
         raise InvalidAmount("amount must be a positive whole number")
     if sender_id == receiver_id:
@@ -17,7 +17,8 @@ def transfer(sender_id, receiver_id, amount):
         # Obstructing one of the conditions in Coffmans conditions in deadlock
         locked = {}
         for account_id in sorted((sender_id, receiver_id)):
-            row = conn.execute("SELECT id, balance, is_system FROM accounts WHERE id = %s FOR UPDATE", (account_id,)).fetchone()
+            row = conn.execute("SELECT id, balance, is_system FROM accounts WHERE id = %s FOR UPDATE", 
+                               (account_id,)).fetchone()
             if row is None:
                 raise AccountNotFound("sender or receiver does not exist")
             locked[account_id] = row
