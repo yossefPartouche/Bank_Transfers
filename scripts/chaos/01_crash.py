@@ -2,10 +2,10 @@
 
 Starts its OWN API server (port 8001), fires transfers, and kills the server with
 SIGKILL in the middle, like a power cut. Because each step commits on its own, some
-transfers are left half-written: a transfer without ledger lines (6), ledger lines
-without balance updates (7), or one balance updated but not the other (8).
+transfers are left half-written: a transfer without ledger lines (problems related to step 2), ledger lines
+without balance updates (problems with step 2), or one balance updated but not the other (problems with step 2).
 
-Run:  python -m scripts.chaos.crash
+Run:  python -m scripts.chaos.01_crash
 PASS when: after the crash, every completed transfer has exactly 2 ledger lines,
 every balance matches its ledger, and the money still sums to 0.
 """
@@ -30,8 +30,8 @@ for round_ in range(ROUNDS):
         run_concurrently(jobs, workers=20)
 
 report = money_report()
-verdict("Problems 6-8 · crash partway through", {
-    "completed transfers without 2 ledger lines (6)": report["completed_transfers_without_2_ledger_lines"],
-    "accounts drifting from ledger (7, 8)": report["accounts_drifting_from_ledger"],
-    "sum of all balances, must be 0 (8)": report["sum_of_all_balances"],
+verdict("Problems 1.0 · crash partway through", {
+    "completed transfers without 2 ledger lines (step 1)": report["completed_transfers_without_2_ledger_lines"],
+    "accounts drifting from ledger (step 1 or 2)": report["accounts_drifting_from_ledger"],
+    "sum of all balances, must be 0 (step 1 or 2)": report["sum_of_all_balances"],
 }, {"crashes": ROUNDS})
