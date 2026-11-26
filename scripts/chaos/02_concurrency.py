@@ -24,8 +24,8 @@ PASS:  A · the sender's balance = start - (successful transfers × amount), in 
        C · exactly 1 success, all the others refused (422), balance = start - amount
 """
 
-from scripts.chaos.common import all_at_once, client, fresh_start, verdict
-from tests.checker import check
+from scripts.chaos.common import client, fire_at_once, fresh_start, verdict, tally
+from tests.checker import check 
 
 ROUNDS = 3  # lost updates depend on timing: a PASS must hold every time, not once by luck
 
@@ -48,15 +48,14 @@ C_AMOUNT = 80      # 0.80 each: affordable exactly once
 def lost_update_sender(api):
     """Scenario A, one round. Returns a dict of numbers for the verdict."""
     _, (sender, *receivers) = fresh_start(bots=1 + A_SENDS, start_balance=A_START)
-    codes = all_at_once(api, [(sender, r, A_AMOUNT) for r in receivers])
+    codes = fire_at_once(api, [(sender, r, A_AMOUNT) for r in receivers])
 
     # This is the number of threads which actually got through to the DB
-    ok = codes.count(201)
+    answers = tally(codes)
     balance = api.get(f"/accounts/{sender}").json()["balance"]
-    expected = A_START - ok * A_AMOUNT
+    expected = A_START - answers["succeeded"] * A_AMOUNT  # only the transfers that really went through
     return {
-        "succeeded": ok,
-        "not 201 (should be 0: the sender can afford all)": len(codes) - ok,
+        **answers,
         "balance": balance,
         "expected": expected,
         "broken invariants": [name for name, _ in check()],
@@ -65,14 +64,13 @@ def lost_update_sender(api):
 def lost_update_receiver(api):
     """Scenario B, one round. Returns a dict of numbers for the verdict."""
     _, (receiver, *senders) = fresh_start(bots=1 + B_SENDERS, start_balance=B_START)
-    codes = all_at_once(api, [(s, receiver, B_AMOUNT) for s in senders])
+    codes = fire_at_once(api, [(s, receiver, B_AMOUNT) for s in senders])
 
-    ok = codes.count(201)
+    answers = tally(codes)
     balance = api.get(f"/accounts/{receiver}").json()["balance"]
-    expected = B_START + ok * B_AMOUNT
+    expected = B_START + answers["succeeded"] * A_AMOUNT  # only the transfers that really went through
     return {
-        "succeeded": ok,
-        "not 201": len(codes) - ok,  # every sender can afford its one transfer
+        **answers,
         "balance": balance,
         "expected": expected,
         "broken invariants": [name for name, _ in check()],
@@ -81,12 +79,10 @@ def lost_update_receiver(api):
 def overdraft(api):
     """Scenario C, one round. Returns a dict of numbers for the verdict."""
     _, (spender, *receivers) = fresh_start(bots=1 + C_TRIES, start_balance=C_START)
-    codes = all_at_once(api, [(spender, r, C_AMOUNT) for r in receivers])
+    codes = fire_at_once(api, [(spender, r, C_AMOUNT) for r in receivers])
 
     return {
-        "succeeded": codes.count(201),
-        "refused": codes.count(422),
-        "other": len(codes) - codes.count(201) - codes.count(422),  # 500s, no answer...
+        **tally(codes),
         "balance": api.get(f"/accounts/{spender}").json()["balance"],
         "broken invariants": [name for name, _ in check()],
     }
@@ -100,10 +96,10 @@ if __name__ == "__main__":
 
     verdict("Step 2 · concurrent transfers", {
         "A · rounds where the sender's balance is wrong": sum(r["balance"] != r["expected"] for r in a),
-        "A · rounds with unexpected answers (not 201)": sum(r["not 201 (should be 0: the sender can afford all)"] > 0 for r in a),
+        "A · rounds with unexpected answers (not 201)": sum(r["refused"] + r["other"] > 0 for r in a),  # the sender can afford all
         "A · rounds with broken invariants": sum(bool(r["broken invariants"]) for r in a),
         "B · rounds where the receiver's balance is wrong": sum(r["balance"] != r["expected"] for r in b),
-        "B · rounds with unexpected answers (not 201)": sum(r["not 201"] > 0 for r in b),
+        "B · rounds with unexpected answers (not 201)": sum(r["refused"] + r["other"] > 0 for r in b),  # each sender can afford its one
         "B · rounds with broken invariants": sum(bool(r["broken invariants"]) for r in b),
         "C · rounds with more than 1 success": sum(r["succeeded"] > 1 for r in c),
         "C · rounds with answers other than 201/422": sum(r["other"] > 0 for r in c),
