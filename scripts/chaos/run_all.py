@@ -1,7 +1,7 @@
 """Run every chaos script and print a scoreboard.
 
 Run:  python -m scripts.chaos.run_all
-Needs the API on port 8000 (01_crash and connections start their own servers).
+Needs the API on port 8000 (01_crash and 04_two_servers start their own servers).
 """
 import subprocess
 import sys
