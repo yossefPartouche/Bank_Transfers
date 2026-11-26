@@ -18,7 +18,7 @@ import threading
 
 import httpx
 
-from app.db import get_conn
+from app.db import connect
 from scripts.chaos.common import client, fresh_start, kill_server, run_concurrently, start_server, transfer, verdict
 from tests.checker import check
 
@@ -58,7 +58,7 @@ def reader_in_the_middle():
     def reader():
         "add up all balances, keep track of how many reads and how many were wrong"
         nonlocal reads, wrong
-        with get_conn(autocommit=True) as conn:  # every read sees the latest committed state
+        with connect(autocommit=True) as conn:  # every read sees the latest committed state
             while not stop.is_set():
                 total = conn.execute("SELECT sum(balance) FROM accounts").fetchone()[0]
                 reads += 1

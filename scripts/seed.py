@@ -1,4 +1,4 @@
-from app.db import get_conn
+from app.db import connect
 from scripts.reset_db import reset_db
 
 
@@ -7,7 +7,7 @@ def seed(accounts=None):
     if accounts is None:
         accounts = {"A": 10000, "B": 10000}
     ids = {}
-    with get_conn() as conn:
+    with connect() as conn:
         # Create a system account for the bank
         ids["bank"] = conn.execute( 
             "INSERT INTO accounts (owner, is_system) VALUES ('bank', true) RETURNING id"

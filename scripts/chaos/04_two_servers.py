@@ -24,7 +24,7 @@ PASS:  A · exactly 1 success, all others refused (422), balance = start - amoun
 """
 import threading
 
-from app.db import get_conn
+from app.db import connect
 from scripts.chaos.common import (client, fire_at_once, fresh_start, kill_server, run_concurrently,
                                   start_server, tally, transfer, verdict)
 from tests.checker import check
@@ -80,7 +80,7 @@ def connection_peak(apis):
     _, bots = fresh_start(bots=2 * B_PAIRS, start_balance=10_000)
     senders, receivers = bots[:B_PAIRS], bots[B_PAIRS:]
 
-    with get_conn() as conn:
+    with connect() as conn:
         limit = int(conn.execute("SHOW max_connections").fetchone()[0])
 
     peak = 0
@@ -89,7 +89,7 @@ def connection_peak(apis):
     def watch():
         """Count open connections to our database, as often as possible, until done."""
         nonlocal peak
-        with get_conn(autocommit=True) as conn:
+        with connect(autocommit=True) as conn:
             while not done.is_set():
                 n = conn.execute(
                     "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()"

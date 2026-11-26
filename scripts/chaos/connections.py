@@ -14,7 +14,7 @@ Fix: a connection pool per worker, sized so all workers together stay under the 
 """
 import threading
 
-from app.db import get_conn
+from app.db import connect
 from scripts.chaos.common import (client, fresh_start, kill_server, run_concurrently, start_server,
                                   transfer, verdict)
 
@@ -28,14 +28,14 @@ peak, stop = 0, threading.Event()
 
 def watch_connections():
     global peak
-    with get_conn() as conn:
+    with connect() as conn:
         conn.autocommit = True
         while not stop.is_set():
             n = conn.execute("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()").fetchone()[0]
             peak = max(peak, n)
 
 
-with get_conn() as conn:
+with connect() as conn:
     limit = int(conn.execute("SHOW max_connections").fetchone()[0])
 
 proc = start_server(PORT, workers=WORKERS)

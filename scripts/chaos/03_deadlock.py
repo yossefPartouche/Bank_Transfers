@@ -14,7 +14,7 @@ PASS:  in every round, 0 deadlocks counted by Postgres, every transfer answered 
 """
 import time
 
-from app.db import get_conn
+from app.db import connect
 from scripts.chaos.common import fire_at_once, client, fresh_start, verdict, tally
 from tests.checker import check
 
@@ -26,7 +26,7 @@ AMOUNT = 100        # 1.00 € each
 
 def deadlocks_so_far():
     """Postgres counts every deadlock it detects, per database."""
-    with get_conn() as conn:
+    with connect() as conn:
         return conn.execute(
             "SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()"
         ).fetchone()[0]
