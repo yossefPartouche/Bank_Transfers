@@ -13,7 +13,8 @@ def transfer(sender_id, receiver_id, amount):
     with get_conn() as conn:
         # Lock both rows: other transfers on these accounts wait until we commit, then read
         # the up-to-date balance (see docs/decisions/step-02-locking.md).
-        # Sender first, then receiver: A→B and B→A lock in opposite order, which can deadlock (step 3).
+        # we've removed the circular waiting by making the waiting descision on the id ordering
+        # Obstructing one of the conditions in Coffmans conditions in deadlock
         locked = {}
         for account_id in sorted((sender_id, receiver_id)):
             row = conn.execute("SELECT id, balance, is_system FROM accounts WHERE id = %s FOR UPDATE", (account_id,)).fetchone()
