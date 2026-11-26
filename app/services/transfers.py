@@ -3,7 +3,8 @@ from app.errors import AccountNotFound, InsufficientFunds, InvalidAmount, SameAc
 
 
 def transfer(sender_id, receiver_id, amount):
-    # NAIVE on purpose: autocommit, no transaction, no lock, no idempotency key.
+    # Step 1: one transaction. Step 2 (partial): balances computed in the DB.
+    # Still deciding on a stale balance (overdraft, problem 3) and no idempotency key.
     if amount <= 0:
         raise InvalidAmount("amount must be a positive whole number")
     if sender_id == receiver_id:
@@ -21,8 +22,8 @@ def transfer(sender_id, receiver_id, amount):
             raise AccountNotFound("sender or receiver does not exist")
 
         sender_balance, sender_is_system = sender
-        receiver_balance = receiver[0]
 
+        # check for insufficient funds (unless the sender is a system account)
         if not sender_is_system and sender_balance < amount:
             conn.execute(
                 "INSERT INTO transfers (sender_id, receiver_id, amount, status) "
@@ -45,9 +46,9 @@ def transfer(sender_id, receiver_id, amount):
             "INSERT INTO ledger_entries (transfer_id, account_id, amount) VALUES (%s, %s, %s)",
             (transfer_id, receiver_id, amount),
         )
-        # Read-then-write: new balances computed in Python from the values read above.
-        conn.execute("UPDATE accounts SET balance = %s WHERE id = %s", (sender_balance - amount, sender_id))
-        conn.execute("UPDATE accounts SET balance = %s WHERE id = %s", (receiver_balance + amount, receiver_id))
+        # Step 2: the DB computes the new balance from the current value, not from our copy.
+        conn.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amount, sender_id))
+        conn.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, receiver_id))
         # This is neccessary since it happens automatically, though better for readability 
         conn.commit()
 
