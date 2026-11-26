@@ -20,10 +20,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
-from app.db import get_conn
 from scripts.reset_db import reset_db
 from scripts.seed import seed
-from tests.checker import check
 from tests.checker import CHECKS, check
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
@@ -94,25 +92,6 @@ def kill_server(proc):
 
 
 # ---------- judge ----------
-
-def money_report():
-    """Old referee, kept until each script is rewritten (01_crash, 02_concurrency, ...).
-    New scripts rely on verdict(), which runs tests/checker.py."""
-    with get_conn() as conn:
-        q = lambda sql: conn.execute(sql).fetchone()[0]
-        return {
-            "sum_of_all_balances": q("SELECT COALESCE(SUM(balance), 0) FROM accounts"),
-            "sum_of_ledger": q("SELECT COALESCE(SUM(amount), 0) FROM ledger_entries"),
-            "accounts_drifting_from_ledger": q("""
-                SELECT COUNT(*) FROM accounts a
-                WHERE a.balance <> COALESCE((SELECT SUM(amount) FROM ledger_entries l
-                                             WHERE l.account_id = a.id), 0)"""),
-            "negative_balances": q("SELECT COUNT(*) FROM accounts WHERE balance < 0 AND NOT is_system"),
-            "completed_transfers_without_2_ledger_lines": q("""
-                SELECT COUNT(*) FROM transfers t
-                WHERE t.status = 'completed'
-                  AND (SELECT COUNT(*) FROM ledger_entries l WHERE l.transfer_id = t.id) <> 2"""),
-        }
 
 
 def verdict(name, problems, details=None, invariants=True):

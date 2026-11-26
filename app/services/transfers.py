@@ -3,34 +3,38 @@ from app.errors import AccountNotFound, InsufficientFunds, InvalidAmount, SameAc
 
 
 def transfer(sender_id, receiver_id, amount):
-    # NAIVE on purpose: autocommit, no transaction, no lock, no idempotency key.
+    # Step 1: one transaction. Step 2: rows locked before deciding, balances computed in the DB.
+    # Not yet: lock ordering (step 3), idempotency key (step 5).
     if amount <= 0:
         raise InvalidAmount("amount must be a positive whole number")
     if sender_id == receiver_id:
         raise SameAccount("sender and receiver must be different")
 
     with get_conn() as conn:
-        # read the balances
+        # Lock both rows: other transfers on these accounts wait until we commit, then read
+        # the up-to-date balance (see docs/decisions/step-02-locking.md).
+        # Sender first, then receiver: A→B and B→A lock in opposite order, which can deadlock (step 3).
         sender = conn.execute(
-            "SELECT balance, is_system FROM accounts WHERE id = %s", (sender_id,)
+            "SELECT balance, is_system FROM accounts WHERE id = %s FOR UPDATE", (sender_id,)
         ).fetchone()
         receiver = conn.execute(
-            "SELECT balance FROM accounts WHERE id = %s", (receiver_id,)
+            "SELECT id FROM accounts WHERE id = %s FOR UPDATE", (receiver_id,)
         ).fetchone()
         if sender is None or receiver is None:
             raise AccountNotFound("sender or receiver does not exist")
-
+        
         sender_balance, sender_is_system = sender
-        receiver_balance = receiver[0]
 
+        # check for insufficient funds (unless the sender is a system account)
         if not sender_is_system and sender_balance < amount:
             conn.execute(
                 "INSERT INTO transfers (sender_id, receiver_id, amount, status) "
                 "VALUES (%s, %s, %s, 'refused')",
                 (sender_id, receiver_id, amount),
             )
+            conn.commit()  # keep the refusal: the exception below would roll it back
             raise InsufficientFunds(f"account {sender_id} has {sender_balance}, needs {amount}")
-
+        
         # create the transfer and ledger entries, update balances
         transfer_id, created_at = conn.execute(
             "INSERT INTO transfers (sender_id, receiver_id, amount, status) "
@@ -45,11 +49,12 @@ def transfer(sender_id, receiver_id, amount):
             "INSERT INTO ledger_entries (transfer_id, account_id, amount) VALUES (%s, %s, %s)",
             (transfer_id, receiver_id, amount),
         )
-        # Read-then-write: new balances computed in Python from the values read above.
-        conn.execute("UPDATE accounts SET balance = %s WHERE id = %s", (sender_balance - amount, sender_id))
-        conn.execute("UPDATE accounts SET balance = %s WHERE id = %s", (receiver_balance + amount, receiver_id))
-        # This is neccessary since it happens automatically, though better for readability 
-        conn.commit()
+        # Step 2: the DB computes the new balance from the current value, not from our copy.
+        conn.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amount, sender_id))
+        conn.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, receiver_id))
+        
+        
+        conn.commit()  # explicit for readability; leaving the `with` would commit anyway
 
     return {"id": transfer_id, "sender_id": sender_id, "receiver_id": receiver_id,
             "amount": amount, "status": "completed", "created_at": created_at}
