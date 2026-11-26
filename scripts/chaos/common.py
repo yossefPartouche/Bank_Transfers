@@ -29,8 +29,8 @@ API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 # ---------- setup ----------
 
-def client(base_url=API_URL):
-    return httpx.Client(base_url=base_url, timeout=30)
+def client(base_url=API_URL, timeout=30):
+    return httpx.Client(base_url=base_url, timeout=timeout)
 
 
 def fresh_start(api=None, bots=2, start_balance=10_000):
