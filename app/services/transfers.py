@@ -14,15 +14,13 @@ def transfer(sender_id, receiver_id, amount):
         # Lock both rows: other transfers on these accounts wait until we commit, then read
         # the up-to-date balance (see docs/decisions/step-02-locking.md).
         # Sender first, then receiver: A→B and B→A lock in opposite order, which can deadlock (step 3).
-        sender = conn.execute(
-            "SELECT balance, is_system FROM accounts WHERE id = %s FOR UPDATE", (sender_id,)
-        ).fetchone()
-        receiver = conn.execute(
-            "SELECT id FROM accounts WHERE id = %s FOR UPDATE", (receiver_id,)
-        ).fetchone()
-        if sender is None or receiver is None:
-            raise AccountNotFound("sender or receiver does not exist")
-        
+        locked = {}
+        for account_id in sorted((sender_id, receiver_id)):
+            row = conn.execute("SELECT id, balance, is_system FROM accounts WHERE id = %s FOR UPDATE", (account_id,)).fetchone()
+            if row is None:
+                raise AccountNotFound("sender or receiver does not exist")
+            locked[account_id] = row
+        sender = locked[sender_id][1:]
         sender_balance, sender_is_system = sender
 
         # check for insufficient funds (unless the sender is a system account)
