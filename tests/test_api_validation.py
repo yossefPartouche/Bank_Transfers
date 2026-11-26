@@ -10,6 +10,13 @@ from tests.checker import check
 client = TestClient(app)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def running_app():
+    """Start the app once for this file: runs lifespan, so the pool is open."""
+    with client:   # enter = lifespan startup (pool.open), exit = lifespan shutdown (pool.close)
+        yield      # every test of this file runs here
+
+
 @pytest.fixture
 def ids():
     """Fresh database before each test: bank + A and B with 100 € each."""

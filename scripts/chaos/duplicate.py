@@ -8,7 +8,7 @@ Run:  python -m scripts.chaos.duplicate
 PASS when: one transfer exists and the money moved once.
 Fix comes at roadmap step 5 (uncomment idempotency_key in the schema and use it).
 """
-from app.db import get_conn
+from app.db import connect
 from scripts.chaos.common import client, fresh_start, run_concurrently, transfer, verdict
 
 with client() as api:
@@ -18,7 +18,7 @@ with client() as api:
     run_concurrently([lambda: transfer(api, a, b, 100, key="double-click-1")] * 2)  # double click
     b_balance = api.get(f"/accounts/{b}").json()["balance"]
 
-with get_conn() as conn:
+with connect() as conn:
     executed = conn.execute(
         "SELECT COUNT(*) FROM transfers WHERE sender_id = %s AND receiver_id = %s AND status = 'completed'",
         (a, b)).fetchone()[0]
