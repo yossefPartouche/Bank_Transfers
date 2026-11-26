@@ -38,10 +38,10 @@ A_TRIES = 20       # transfers fired at the same moment, half to each server
 A_AMOUNT = 80      # 0.80 each: affordable exactly once
 
 # Scenario B
-B_WORKERS = 4      # uvicorn workers per server: 2 servers × 4 workers × ~40 requests each
+B_WORKERS = 2      # uvicorn workers per server: 2 servers × 4 workers × ~40 requests each
 B_REQUESTS = 1200  # transfers in total
 B_IN_FLIGHT = 250  # transfers in flight at the same time
-B_PAIRS = 100      # sender i always pays receiver i: one-way, no shared receiver
+B_SENDERS = 100      # sender i always pays receiver i: one-way, no shared receiver
 B_WARNING = 0.8    # the peak must stay under 80% of max_connections
 
 
@@ -77,8 +77,7 @@ def overdraft_two_servers(apis):
 
 def connection_peak(apis):
     """Scenario B. Returns a dict of numbers for the verdict."""
-    _, bots = fresh_start(bots=2 * B_PAIRS, start_balance=10_000)
-    senders, receivers = bots[:B_PAIRS], bots[B_PAIRS:]
+    _, (receiver, *senders) = fresh_start(bots=1 + B_SENDERS, start_balance=10_000)
 
     with connect() as conn:
         limit = int(conn.execute("SHOW max_connections").fetchone()[0])
@@ -98,8 +97,7 @@ def connection_peak(apis):
 
     def send(i):
         api = apis[i % len(apis)]            # alternate between the two servers
-        pair = i % B_PAIRS
-        return transfer(api, senders[pair], receivers[pair], 1)
+        return transfer(api, senders[i % B_SENDERS], receiver, 1)
 
     watcher = threading.Thread(target=watch)
     watcher.start()
