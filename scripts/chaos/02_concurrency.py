@@ -23,9 +23,8 @@ PASS:  A · the sender's balance = start - (successful transfers × amount), in 
        B · the receiver's balance = start + (successful transfers × amount), in every round
        C · exactly 1 success, all the others refused (422), balance = start - amount
 """
-import threading
 
-from scripts.chaos.common import client, fresh_start, run_concurrently, transfer, verdict
+from scripts.chaos.common import all_at_once, client, fresh_start, verdict
 from tests.checker import check
 
 ROUNDS = 3  # lost updates depend on timing: a PASS must hold every time, not once by luck
@@ -44,25 +43,6 @@ B_AMOUNT = 10      # 0.10 each
 C_START = 100      # the spender holds 1.00
 C_TRIES = 20       # transfers fired at the same moment
 C_AMOUNT = 80      # 0.80 each: affordable exactly once
-
-
-def all_at_once(api, calls):
-    """Fire every (sender, receiver, amount) at the same moment.
-
-    A Barrier makes every thread wait until all are ready, then releases them together,
-    so the requests really overlap instead of trickling in one after another.
-    """
-    barrier = threading.Barrier(len(calls))
-
-    def job(sender, receiver, amount):
-        barrier.wait()
-        return transfer(api, sender, receiver, amount)
-
-    results = run_concurrently(
-        [lambda c=c: job(*c) for c in calls],
-        workers=len(calls),  # one thread per call, or the barrier would wait forever
-    )
-    return [r.status_code if not isinstance(r, Exception) else "error" for r in results]
 
 
 def lost_update_sender(api):
