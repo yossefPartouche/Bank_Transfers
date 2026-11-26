@@ -7,13 +7,12 @@ import subprocess
 import sys
 
 SCRIPTS = [
-    ("1  lost update, sender", "lost_update_sender"),
-    ("2  lost update, receiver", "lost_update_receiver"),
-    ("3+4 overdraft, stale reads", "overdraft"),
-    ("5  halfway states visible", "halfway_visible"),
-    ("6-8 crash partway", "crash"),
-    ("9  duplicate on retry", "duplicate"),
-    ("10 too many connections", "connections"),
+    ("step 1 · crash in the middle", "01_crash"),
+    ("step 2 · lost update, sender", "lost_update_sender"),
+    ("step 2 · lost update, receiver", "lost_update_receiver"),
+    ("step 2 · overdraft", "overdraft"),
+    ("step 4 · too many connections", "connections"),
+    ("step 5 · duplicate on retry", "duplicate"),
 ]
 
 board = []
