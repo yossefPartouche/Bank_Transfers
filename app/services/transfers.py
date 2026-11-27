@@ -1,5 +1,6 @@
 from app.db import get_conn
 from app.errors import AccountNotFound, InsufficientFunds, InvalidAmount, SameAccount
+import psycopg
 
 def _previous_answer(conn, idempotency_key):
     """If this key was already handled, the answer given the first time; otherwise None."""
@@ -18,8 +19,19 @@ def _previous_answer(conn, idempotency_key):
     return {"id": transfer_id, "sender_id": sender_id, "receiver_id": receiver_id,
             "amount": amount, "status": status, "created_at": created_at}
 
-
 def transfer(sender_id, receiver_id, amount, idempotency_key=None):
+    """Step 5: if two requests with the same key race (double click), both may pass the
+    "already handled?" check; the UNIQUE key then lets only one insert succeed. The loser
+    gets a UniqueViolation: it answers exactly as the winner did, instead of a 500."""
+    try:
+        return _transfer(sender_id, receiver_id, amount, idempotency_key)
+    except psycopg.errors.UniqueViolation as e:
+        if e.diag.constraint_name != "transfers_idempotency_key_key":
+            raise  # some other unique rule broke: a real bug, don't hide it
+        with get_conn() as conn:  # the winner has committed by now: read its answer
+            return _previous_answer(conn, idempotency_key)
+
+def _transfer(sender_id, receiver_id, amount, idempotency_key=None):
     # Step 1: one transaction. Step 2: rows locked before deciding, balances computed in the DB.
     # Step 3: rows locked in id order. Not yet: idempotency key (step 5).
     # step 5: idempotency key in progress 

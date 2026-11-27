@@ -11,7 +11,7 @@ CREATE TABLE accounts (
 
 CREATE TABLE transfers (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    idempotency_key TEXT,        
+    idempotency_key TEXT        UNIQUE, 
     sender_id       BIGINT      NOT NULL REFERENCES accounts(id),
     receiver_id     BIGINT      NOT NULL REFERENCES accounts(id),
     amount          BIGINT      NOT NULL CHECK (amount > 0),

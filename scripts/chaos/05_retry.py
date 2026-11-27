@@ -24,7 +24,6 @@ PASS:  A · 1 transfer, the money moved once, both answers identical (status and
 """
 from app.db import connect
 from scripts.chaos.common import client, fresh_start, transfer, verdict, fire_at_once
-
 START = 100_000    # 1,000.00 each: nobody can run out of money
 AMOUNT = 5_000     # 50.00
 ROUNDS = 5         # double click is a time race a PASS must hold every time
