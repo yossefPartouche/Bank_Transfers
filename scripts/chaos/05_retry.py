@@ -12,6 +12,10 @@ Scenario B · double click: the identical request twice at the SAME instant, sam
 tapping "Pay" twice, or an app sending twice). Both arrive before either has finished, so a
 "have I seen this key?" check alone isn't enough: both can see "no" and both transfer.
 
+Scenario C · same key, other amount: a request reuses a key that was already used for a
+DIFFERENT transfer (here: same accounts, another amount). That's a client bug. Answering with
+the stored result would hide it, and the client would believe its new amount went through.
+
 Isolation: steps 1-4 are fixed, both accounts are rich (no refusal), one client only (no
 lost update, no deadlock). The only way money can move twice is a duplicate request.
 The checker can't see this bug (the books balance): we count transfers per key instead.
@@ -21,6 +25,7 @@ Fix:   store the Idempotency-Key with the transfer (UNIQUE, same transaction); a
        returns the stored answer instead of transferring again
 PASS:  A · 1 transfer, the money moved once, both answers identical (status and transfer id)
        B · same, in every round
+       C · the second request is rejected (409), only the original transfer exists, untouched
 """
 from app.db import connect
 from scripts.chaos.common import client, fresh_start, transfer, verdict, fire_at_once
@@ -73,11 +78,27 @@ def double_click(api, round_no):
         "codes": codes,
     } 
 
+# ---------- scenario C ----------
+
+def same_key_other_amount(api):
+    """Scenario C. A key is reused for a different amount: it must be rejected, not answered."""
+    _, (a, b) = fresh_start(bots=2, start_balance=START)
+    first = transfer(api, a, b, AMOUNT, key="reused-C")
+    second = transfer(api, a, b, AMOUNT + 2_000, key="reused-C")   # same key, 70.00 instead of 50.00
+
+    return {
+        "transfers": completed_transfers(a, b),
+        "receiver gained": api.get(f"/accounts/{b}").json()["balance"] - START,
+        "first answer": answer(first),
+        "second status": second.status_code,
+    }
+
 
 if __name__ == "__main__":
     with client() as api:
         a = lost_reply_resend(api)
         b = [double_click(api, n) for n in range(ROUNDS)]
+        c = same_key_other_amount(api)
 
     verdict("Step 5 · retries and duplicates", {
         "A · extra transfers (should be 1 in total)": a["transfers"] - 1,
@@ -86,6 +107,9 @@ if __name__ == "__main__":
         "B · rounds with more than 1 transfer": sum(r["transfers"] > 1 for r in b),
         "B · rounds where the money moved more than once": sum(r["receiver gained"] != AMOUNT for r in b),
         "B · rounds where the two answers differ": sum(len(set(r["codes"])) > 1 for r in b),
+        "C · the second request was not rejected with 409": int(c["second status"] != 409),
+        "C · extra transfers (should be 1 in total)": c["transfers"] - 1,
+        "C · the original transfer changed": int(c["receiver gained"] != AMOUNT),
     }, details={
         "A · transfers in the database": a["transfers"],
         "A · receiver gained (expected 5000)": a["receiver gained"],
@@ -94,4 +118,7 @@ if __name__ == "__main__":
         "B · rounds": ROUNDS,
         "B · transfers per round": ", ".join(str(r["transfers"]) for r in b),
         "B · answers per round": ", ".join(str(r["codes"]) for r in b),
+        "C · first answer (status, id)": c["first answer"],
+        "C · second request's status (expected 409)": c["second status"],
+        "C · receiver gained (expected 5000)": c["receiver gained"],
     }, invariants=False)  # the books balance even with a duplicate: the checker can't see this bug
