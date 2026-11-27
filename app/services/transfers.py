@@ -1,8 +1,8 @@
 from app.db import get_conn
-from app.errors import AccountNotFound, InsufficientFunds, InvalidAmount, SameAccount
+from app.errors import AccountNotFound, InsufficientFunds, InvalidAmount, SameAccount, IdempotencyKeyReused
 import psycopg
 
-def _previous_answer(conn, idempotency_key):
+def _previous_answer(conn, idempotency_key, request):
     """If this key was already handled, the answer given the first time; otherwise None."""
     if idempotency_key is None:
         return None
@@ -14,6 +14,8 @@ def _previous_answer(conn, idempotency_key):
     if row is None:
         return None
     transfer_id, sender_id, receiver_id, amount, status, created_at = row
+    if (sender_id, receiver_id, amount) != request :
+        raise IdempotencyKeyReused(f"key {idempotency_key} was already used for a different transfer")
     if status == "refused":
         raise InsufficientFunds(f"transfer with key {idempotency_key} was already refused")
     return {"id": transfer_id, "sender_id": sender_id, "receiver_id": receiver_id,
@@ -29,7 +31,7 @@ def transfer(sender_id, receiver_id, amount, idempotency_key=None):
         if e.diag.constraint_name != "transfers_idempotency_key_key":
             raise  # some other unique rule broke: a real bug, don't hide it
         with get_conn() as conn:  # the winner has committed by now: read its answer
-            return _previous_answer(conn, idempotency_key)
+            return _previous_answer(conn, idempotency_key, (sender_id, receiver_id, amount))
 
 def _transfer(sender_id, receiver_id, amount, idempotency_key=None):
     # Step 1: one transaction. Step 2: rows locked before deciding, balances computed in the DB.
@@ -43,7 +45,7 @@ def _transfer(sender_id, receiver_id, amount, idempotency_key=None):
     with get_conn() as conn:
         # Step 5: a key we've already handled gets the same answer again, with no new transfer.
         # (`:=` assigns and tests in one line)
-        if (previous := _previous_answer(conn, idempotency_key)):
+        if (previous := _previous_answer(conn, idempotency_key, (sender_id, receiver_id, amount))):
             # The := is an assingment and checker at the same time
             return previous
         # Lock both rows: other transfers on these accounts wait until we commit, then read

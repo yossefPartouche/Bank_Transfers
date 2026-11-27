@@ -6,3 +6,4 @@ class InvalidAmount(Exception): pass
 class SameAccount(Exception): pass
 class InvalidOwner(Exception): pass
 class OwnerTaken(Exception): pass
+class IdempotencyKeyReused(Exception): pass

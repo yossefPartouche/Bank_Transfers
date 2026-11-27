@@ -30,6 +30,7 @@ HTTP_ERRORS = {
     errors.SameAccount: (400, "same_account"),
     errors.InvalidOwner: (400, "invalid_owner"),
     errors.OwnerTaken: (409, "owner_taken"),
+    errors.IdempotencyKeyReused:(409, "idempotency_key_reused"),
     PoolTimeout: (503, "overloaded"),  # no free connection within POOL_TIMEOUT: retry later
 }
 
