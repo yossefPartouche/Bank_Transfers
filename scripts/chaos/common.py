@@ -81,10 +81,10 @@ def fire_at_once(apis, calls):
     apis = apis if isinstance(apis, (list, tuple)) else [apis]
     barrier = threading.Barrier(len(calls))
 
-    def job(i, sender, receiver, amount):
+    def job(i, sender, receiver, amount, key=None):
         api = apis[i % len(apis)]
         barrier.wait()
-        return transfer(api, sender, receiver, amount)
+        return transfer(api, sender, receiver, amount, key)
 
     results = run_concurrently(
         [lambda i=i, c=c: job(i, *c) for i, c in enumerate(calls)],

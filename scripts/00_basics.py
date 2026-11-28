@@ -1,6 +1,6 @@
 """Step 0 · Happy path: the whole product works end to end, through the API."""
 import httpx
-
+import uuid
 from scripts.reset_db import reset_db
 from scripts.seed import seed
 from tests.checker import check
@@ -21,7 +21,7 @@ def step(label, resp, expected):
 
 
 def transfer(api, sender, receiver, amount):
-    return api.post("/transfers", json={"sender_id": sender, "receiver_id": receiver, "amount": amount})
+    return api.post("/transfers", json={"sender_id": sender, "receiver_id": receiver, "amount": amount}, headers={"Idempotency-Key": str(uuid.uuid4())})
 
 
 def main():

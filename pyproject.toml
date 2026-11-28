@@ -1,0 +1,18 @@
+[project]
+name = "bank-transfers"
+version = "0.1.0"
+description = "A money-transfer API built to break, then fixed one problem at a time"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi==0.165.0",
+    "httpx==0.28.1",
+    "psycopg[binary]==3.3.9",
+    "psycopg-pool==3.3.3",
+    "pytest==9.2.0",
+    "python-dotenv==1.2.4",
+    "uvicorn==0.54.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

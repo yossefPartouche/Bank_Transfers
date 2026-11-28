@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 import pytest
-
+import uuid
 from app.main import app
 from scripts.reset_db import reset_db
 from scripts.seed import seed
@@ -25,11 +25,16 @@ def ids():
 
 
 def transfer(sender, receiver, amount):
-    return client.post("/transfers", json={"sender_id": sender, "receiver_id": receiver, "amount": amount})
+    return client.post("/transfers", json={"sender_id": sender, "receiver_id": receiver, "amount": amount}, headers={"Idempotency-Key": str(uuid.uuid4())})
 
 
 def test_unknown_sender(ids):
     assert transfer(999, ids["B"], 100).status_code == 404
+
+def test_missing_idempotency_key(ids):
+    resp = client.post("/transfers", json={"sender_id": ids["A"], "receiver_id": ids["B"], "amount": 100})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "missing_idempotency_key"
 
 
 def test_negative_amount(ids):

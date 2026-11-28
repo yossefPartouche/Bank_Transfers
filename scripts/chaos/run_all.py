@@ -11,7 +11,7 @@ SCRIPTS = [
     ("step 2 · concurrent transfers", "02_concurrency"),
     ("step 3 · deadlock", "03_deadlock"),
     ("step 4 · two servers", "04_two_servers"),
-    ("step 5 · duplicate on retry", "duplicate"),
+    ("step 5 · duplicate on retry", "05_retry"),
 ]
 
 board = []
