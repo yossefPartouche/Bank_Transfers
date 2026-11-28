@@ -23,18 +23,30 @@ Each step is a chaos script that reproduces a real bug, the fix, and the same sc
 
 ## Run it
 
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/) (`brew install uv`) and Docker.
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-python -m pip install -r requirements.txt
+uv sync --locked                     # creates .venv with Python 3.14 and the exact locked packages
 cp .env.example .env
 
-docker run -d --name wallet-db -e POSTGRES_USER=wallet -e POSTGRES_PASSWORD=wallet \
-  -e POSTGRES_DB=wallet -p 5432:5432 postgres:18
+docker run -d --name wallet-db \
+  -e POSTGRES_USER=wallet -e POSTGRES_PASSWORD=wallet -e POSTGRES_DB=wallet \
+  -p 5432:5432 postgres:18
 
-python -m scripts.reset_db          # drop + recreate the tables
-uvicorn app.main:app --reload       # http://localhost:8000/health
+uv run python -m scripts.reset_db    # drop + recreate tables
+uv run uvicorn app.main:app --reload # http://localhost:8000/health
 ```
 
+Run the checks:
+
+```bash
+uv run pytest                                # API validation tests
+uv run python -m scripts.chaos.run_all       # every chaos script (API must be running)
+```
+
+After every `git pull`: `uv sync --locked`. To add a package: `uv add <package>`.
 Then:
 
 ```bash
