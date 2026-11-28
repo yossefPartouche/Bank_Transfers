@@ -16,7 +16,7 @@ Each step is a chaos script that reproduces a real bug, the fix, and the same sc
 | 2 · Concurrent transfers | lost updates, overdraft | `SELECT … FOR UPDATE` | `chaos/02_concurrency.py` ✅ |
 | 3 · A→B and B→A at once | deadlocks | lock accounts by id order | `chaos/03_deadlock.py` ✅ |
 | 4 · Two servers | per-process state, too many connections | locks in the DB, one pool per worker | `chaos/04_two_servers.py` ✅ |
-| 5 · Client retries | duplicate transfers | idempotency key | `chaos/duplicate.py` 🚧 |
+| 5 · Client retries | duplicate transfers | idempotency key | `chaos/05_retry.py` ✅ |
 | 6 · Reconciliation | inconsistent reports | consistent snapshot | – |
 | 7 · Notify a partner | lost or phantom events | outbox + worker | – |
 | 8 · Two workers | events sent twice | `SKIP LOCKED` | – |
