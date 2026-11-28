@@ -106,7 +106,7 @@ def connection_peak(apis):
     done.set()
     watcher.join()
 
-    codes = [r.status_code if not isinstance(r, Exception) else "error" for r in results]
+    codes = [r.status_code if not isinstance(r, Exception) else type(r).__name__ for r in results]
     other = sorted({str(c) for c in codes if c not in (201, 422)})   # which answers failed: "503", "500", "error"...
     return {**tally(codes), "other codes": other, "peak": peak, "limit": limit,
             "broken": [name for name, _ in check()]}
